@@ -764,11 +764,14 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
 
       // Show summary message
       let message = `Import completed: ${result.imported} imported`;
+      if (result.skippedBlank > 0) {
+        message += `, ${result.skippedBlank} blank note${result.skippedBlank > 1 ? 's' : ''} skipped`;
+      }
       if (result.skipped > 0) {
-        message += `, ${result.skipped} skipped`;
+        message += `, ${result.skipped} duplicate${result.skipped > 1 ? 's' : ''} skipped`;
       }
       if (result.errors.length > 0) {
-        message += `, ${result.errors.length} errors`;
+        message += `, ${result.errors.length} error${result.errors.length > 1 ? 's' : ''}`;
       }
 
       if (result.errors.length > 0) {

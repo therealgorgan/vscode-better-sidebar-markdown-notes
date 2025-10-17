@@ -21,6 +21,7 @@ export interface DiscoveredNote {
 export interface ImportResult {
   imported: number;
   skipped: number;
+  skippedBlank: number; // Blank/template notes that were intentionally skipped
   errors: string[];
   conflicts: ConflictInfo[];
 }
@@ -115,11 +116,14 @@ export class ImportService {
 
       // Convert recovered old extension data to DiscoveredNote format
       if (recoveredData && recoveredData.pages && Array.isArray(recoveredData.pages)) {
+        let skippedBlankCount = 0;
         recoveredData.pages.forEach((pageContent: string, index: number) => {
           if (typeof pageContent === 'string' && pageContent.trim()) {
             // Skip default welcome/filler text pages
             if (this.isDefaultWelcomeText(pageContent)) {
-              console.log(`[SCAN] Skipping page ${index + 1} - contains default welcome text`);
+              console.log(`[SCAN] Skipping blank/template note at page ${index + 1}`);
+              console.log(`[SCAN] First 100 chars: ${pageContent.substring(0, 100)}...`);
+              skippedBlankCount++;
               return;
             }
 
@@ -140,6 +144,10 @@ export class ImportService {
             });
           }
         });
+        
+        if (skippedBlankCount > 0) {
+          console.log(`[SCAN] ✓ Skipped ${skippedBlankCount} blank/template note${skippedBlankCount > 1 ? 's' : ''} (welcome pages with no content)`);
+        }
 
         console.log(`[SCAN] Recovered ${discoveredNotes.length} notes from old extension`);
 
@@ -1608,7 +1616,13 @@ export class ImportService {
    */
   private isDefaultWelcomeText(content: string): boolean {
     // Check for the signature heading from the old extension's default content
-    return content.includes('# Welcome to `sidebar-markdown-notes`');
+    // Only skip if it's EXACTLY the welcome message (empty/default notes)
+    const hasWelcomeHeading = content.includes('# Welcome to `sidebar-markdown-notes`');
+    const hasGettingStarted = content.includes('## Getting started');
+    const isMostlyTemplate = content.trim().length < 500; // If it's short, it's likely just the template
+    
+    // Only skip if it has the welcome heading AND is mostly just template text
+    return hasWelcomeHeading && hasGettingStarted && isMostlyTemplate;
   }
 
   /**
@@ -1621,6 +1635,7 @@ export class ImportService {
     const result: ImportResult = {
       imported: 0,
       skipped: 0,
+      skippedBlank: 0,
       errors: [],
       conflicts: []
     };

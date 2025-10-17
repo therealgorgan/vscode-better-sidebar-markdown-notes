@@ -1380,10 +1380,19 @@
         </div>
       `;
 
+      if (result.skippedBlank > 0) {
+        html += `
+          <div class="import-stat">
+            <span class="stat-label">Blank notes skipped:</span>
+            <span class="stat-value">${result.skippedBlank}</span>
+          </div>
+        `;
+      }
+
       if (result.skipped > 0) {
         html += `
           <div class="import-stat">
-            <span class="stat-label">Skipped:</span>
+            <span class="stat-label">Duplicates skipped:</span>
             <span class="stat-value">${result.skipped}</span>
           </div>
         `;
