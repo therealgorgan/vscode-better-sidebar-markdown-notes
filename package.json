@@ -12,7 +12,7 @@
 	"license": "GPL-3.0-or-later",
 	"icon": "images/icon.png",
 	"repository": {
-		"url": "https://www.github.com/therealgorgan/better-sidebar-markdown-notes",
+		"url": "https://www.github.com/therealgorgan/vscode-better-sidebar-markdown-notes",
 		"type": "git"
 	},
 	"keywords": [
