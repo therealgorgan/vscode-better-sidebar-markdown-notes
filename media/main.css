@@ -643,15 +643,23 @@ body {
   gap: 6px;
 }
 
+/* Bookmark container - top left position */
+.note-bookmark-container {
+  padding: 4px 0 0 4px;
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
 .note-checkbox-container {
-  padding: 8px 0 0 8px;
+  padding: 8px 8px 0 0;
   display: flex;
   align-items: center;
 }
 
-/* Compact checkbox container for Browse Notes modal */
+/* Compact checkbox container for Browse Notes modal - right side */
 #note-browser-modal .note-checkbox-container {
-  padding: 4px 0 0 4px;
+  padding: 4px 4px 0 0;
 }
 
 .note-checkbox {
@@ -680,12 +688,13 @@ body {
   padding: 4px 6px 6px 6px;
 }
 
-/* Note actions container (bookmark and delete buttons) */
+/* Note actions container (delete button at bottom right) */
 .note-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: flex-end;
   gap: 4px;
-  padding: 8px 8px 0 0;
+  padding: 0 8px 8px 0;
   opacity: 0;
   transition: opacity 0.2s;
   flex-shrink: 0;
@@ -693,7 +702,7 @@ body {
 
 /* Compact actions for Browse Notes modal */
 #note-browser-modal .note-actions {
-  padding: 4px 4px 0 0;
+  padding: 0 4px 4px 0;
   gap: 2px;
 }
 
@@ -701,7 +710,7 @@ body {
   opacity: 1;
 }
 
-/* Bookmark button in note items */
+/* Bookmark button in note items - now in top left */
 .bookmark-note-button {
   background: transparent;
   border: none;
@@ -714,11 +723,21 @@ body {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  margin-right: 4px;
+  opacity: 0.7;
 }
 
 .bookmark-note-button:hover {
   background: var(--vscode-button-secondaryBackground);
+  opacity: 1;
+}
+
+.note-item:hover .bookmark-note-button {
+  opacity: 1;
+}
+
+/* Always show bookmarked stars */
+.bookmark-note-button.bookmarked {
+  opacity: 1;
 }
 
 .bookmark-note-button .star-icon {

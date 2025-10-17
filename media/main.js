@@ -671,8 +671,12 @@
 
       noteItem.innerHTML = `
         <div class="note-item-inner">
-          <div class="note-checkbox-container">
-            <input type="checkbox" class="note-checkbox" data-index="${index}" ${browserSelectedNotes.has(index) ? 'checked' : ''} />
+          <div class="note-bookmark-container">
+            <button class="bookmark-note-button ${isBookmarked ? 'bookmarked' : ''}" title="${isBookmarked ? 'Remove bookmark' : 'Bookmark note'}" data-index="${index}">
+              <svg class="star-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 1L10.163 5.381L15 6.134L11.5 9.548L12.326 14.366L8 12.096L3.674 14.366L4.5 9.548L1 6.134L5.837 5.381L8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="${isBookmarked ? '#FFEA00' : 'none'}"/>
+              </svg>
+            </button>
           </div>
           <div class="note-content" data-index="${index}">
             <div class="note-title">
@@ -685,13 +689,11 @@
               <span class="note-number">Page ${index + 1}</span>
             </div>
           </div>
+          <div class="note-checkbox-container">
+            <input type="checkbox" class="note-checkbox" data-index="${index}" ${browserSelectedNotes.has(index) ? 'checked' : ''} />
+          </div>
         </div>
         <div class="note-actions">
-          <button class="bookmark-note-button ${isBookmarked ? 'bookmarked' : ''}" title="${isBookmarked ? 'Remove bookmark' : 'Bookmark note'}" data-index="${index}">
-            <svg class="star-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 1L10.163 5.381L15 6.134L11.5 9.548L12.326 14.366L8 12.096L3.674 14.366L4.5 9.548L1 6.134L5.837 5.381L8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="${isBookmarked ? '#FFEA00' : 'none'}"/>
-            </svg>
-          </button>
           <button class="delete-note-button" title="Delete note" data-index="${index}">
             <span class="codicon codicon-trash"></span>
           </button>

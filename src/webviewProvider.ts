@@ -735,10 +735,24 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
    */
   private async handleImportSelectedNotes(data: {
     selectedNotes: DiscoveredNote[];
-    conflictResolutions?: Map<string, 'skip' | 'replace' | 'merge' | 'rename'>;
+    conflictResolutions?:
+      | Map<string, 'skip' | 'replace' | 'merge' | 'rename'>
+      | Record<string, 'skip' | 'replace' | 'merge' | 'rename'>;
   }): Promise<void> {
     try {
-      const result = await this.importService.importNotes(data.selectedNotes, data.conflictResolutions);
+      // Convert conflictResolutions from plain object to Map if needed
+      // (postMessage serializes Maps to plain objects)
+      let conflictResolutionsMap: Map<string, 'skip' | 'replace' | 'merge' | 'rename'> | undefined;
+      if (data.conflictResolutions) {
+        if (data.conflictResolutions instanceof Map) {
+          conflictResolutionsMap = data.conflictResolutions;
+        } else {
+          // Convert plain object to Map
+          conflictResolutionsMap = new Map(Object.entries(data.conflictResolutions));
+        }
+      }
+
+      const result = await this.importService.importNotes(data.selectedNotes, conflictResolutionsMap);
 
       // Send result back to webview
       if (this._view) {
