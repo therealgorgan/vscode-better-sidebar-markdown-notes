@@ -51,6 +51,14 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+    // Setup file watcher for external changes after webview is ready
+    const config = getConfig();
+    if (config.sync.enableFileWatcher) {
+      this.storageService.setupFileWatcher(() => {
+        this.handleExternalFileChange();
+      });
+    }
+
     webviewView.webview.onDidReceiveMessage(async (data) => {
       switch (data.type) {
         case 'log': {
@@ -161,6 +169,15 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
    */
   private async handleSaveNotes(notesData: NotesData, isAutoSave: boolean = false): Promise<void> {
     try {
+      // Check for SyncThing conflict files before saving
+      const conflictFiles = await this.storageService.checkForSyncThingConflicts();
+      
+      if (conflictFiles.length > 0 && !isAutoSave) {
+        // Prompt user to resolve SyncThing conflicts
+        await this.handleSyncThingConflicts(conflictFiles);
+        return;
+      }
+
       await this.storageService.saveNotes(notesData);
 
       // Clear any existing auto-save timeout
@@ -185,18 +202,30 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
         });
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to save notes:', error);
+
+      // Handle conflicts specially
+      if (errorMsg === 'CONFLICT_DETECTED' || errorMsg === 'CONFLICT_EXTERNAL_NEWER') {
+        if (!isAutoSave) {
+          await this.handleSaveConflict(notesData, errorMsg === 'CONFLICT_EXTERNAL_NEWER');
+        } else {
+          // For auto-save, just skip and notify
+          this.updateStatusBar('$(warning) Conflict detected - please refresh');
+        }
+        return;
+      }
 
       // Show error message only for manual saves to avoid spam
       if (!isAutoSave) {
-        vscode.window.showErrorMessage(`Failed to save notes: ${error}`);
+        vscode.window.showErrorMessage(`Failed to save notes: ${errorMsg}`);
       }
 
       // Send error back to webview
       if (this._view) {
         this._view.webview.postMessage({
           type: 'saveError',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMsg,
           isAutoSave: isAutoSave
         });
       }
@@ -243,6 +272,24 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
           this._view.webview.postMessage({ type: 'noWorkspace' });
         }
         return;
+      }
+
+      // Check for SyncThing conflicts first
+      const config = getConfig();
+      if (config.sync.checkSyncThingConflicts) {
+        const conflictFiles = await this.storageService.checkForSyncThingConflicts();
+        if (conflictFiles.length > 0) {
+          // Notify user about conflicts
+          const choice = await vscode.window.showWarningMessage(
+            `SyncThing conflict detected! Found ${conflictFiles.length} conflict file(s). Resolve now?`,
+            'Resolve Conflicts',
+            'Ignore for Now'
+          );
+          
+          if (choice === 'Resolve Conflicts') {
+            await this.handleSyncThingConflicts(conflictFiles);
+          }
+        }
       }
 
       // Check for migration and load data
@@ -333,6 +380,221 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
       console.error('Failed to bulk update bookmarks:', error);
       vscode.window.showErrorMessage(`Failed to update bookmarks: ${error}`);
     }
+  }
+
+  /**
+   * Handle external file changes (e.g., from SyncThing)
+   */
+  private async handleExternalFileChange(): Promise<void> {
+    console.log('[WebviewProvider] External file change detected');
+    
+    if (!this._view) {
+      return;
+    }
+
+    const config = getConfig();
+    
+    if (config.sync.autoReloadOnExternalChange) {
+      // Auto-reload without prompting
+      console.log('[WebviewProvider] Auto-reloading notes due to external change');
+      await this.handleLoadNotes();
+      vscode.window.showInformationMessage('Notes reloaded from external changes');
+    } else {
+      // Notify user and offer to reload
+      const choice = await vscode.window.showInformationMessage(
+        'Notes file was modified externally. Reload to see changes?',
+        'Reload',
+        'Ignore'
+      );
+
+      if (choice === 'Reload') {
+        console.log('[WebviewProvider] User chose to reload notes');
+        await this.handleLoadNotes();
+      }
+    }
+  }
+
+  /**
+   * Handle save conflicts
+   */
+  private async handleSaveConflict(localData: NotesData, externalIsNewer: boolean): Promise<void> {
+    const remoteData = await this.storageService.loadNotes();
+    
+    if (!remoteData) {
+      // No remote data, safe to save
+      await this.storageService.saveNotes(localData, true);
+      return;
+    }
+
+    const message = externalIsNewer 
+      ? 'A newer version of notes exists. How would you like to proceed?'
+      : 'Notes file was modified by another device. How would you like to proceed?';
+
+    const choice = await vscode.window.showWarningMessage(
+      message,
+      'Use My Version',
+      'Use Other Version',
+      'Merge',
+      'Cancel'
+    );
+
+    switch (choice) {
+      case 'Use My Version':
+        await this.storageService.saveNotes(localData, true);
+        vscode.window.showInformationMessage('Your version has been saved.');
+        break;
+      
+      case 'Use Other Version':
+        if (this._view) {
+          this._view.webview.postMessage({
+            type: 'notesLoaded',
+            data: remoteData
+          });
+        }
+        vscode.window.showInformationMessage('Loaded the other version.');
+        break;
+      
+      case 'Merge':
+        const merged = await this.storageService.mergeNotes(localData, remoteData);
+        await this.storageService.saveNotes(merged, true);
+        if (this._view) {
+          this._view.webview.postMessage({
+            type: 'notesLoaded',
+            data: merged
+          });
+        }
+        vscode.window.showInformationMessage('Notes have been merged.');
+        break;
+      
+      default:
+        // Cancel - do nothing
+        break;
+    }
+  }
+
+  /**
+   * Handle SyncThing conflict files
+   */
+  private async handleSyncThingConflicts(conflictFiles: string[]): Promise<void> {
+    console.log(`[WebviewProvider] Handling ${conflictFiles.length} SyncThing conflict file(s)`);
+    
+    const conflictNames = conflictFiles.map((f) => f.split(/[\\/]/).pop()).join(', ');
+    
+    const choice = await vscode.window.showWarningMessage(
+      `SyncThing conflict detected: ${conflictNames}. Resolve now?`,
+      'Resolve',
+      'Ignore'
+    );
+
+    if (choice !== 'Resolve') {
+      console.log('[WebviewProvider] User chose to ignore SyncThing conflicts');
+      return;
+    }
+
+    // For each conflict file, let user choose
+    for (const conflictFile of conflictFiles) {
+      const fileName = conflictFile.split(/[\\/]/).pop() || 'unknown';
+      const currentFile = this.storageService.getNotesFilePathPublic();
+      
+      // URIs for both files
+      const currentUri = vscode.Uri.file(currentFile);
+      const conflictUri = vscode.Uri.file(conflictFile);
+      
+      // First, show the diff viewer
+      try {
+        await vscode.commands.executeCommand(
+          'vscode.diff',
+          currentUri,
+          conflictUri,
+          `Current ↔ Conflict: ${fileName}`,
+          { preview: true }
+        );
+        
+        vscode.window.showInformationMessage(
+          'Review the differences, then choose which version to keep.',
+          { modal: false }
+        );
+      } catch (error) {
+        console.error('[WebviewProvider] Failed to open diff viewer:', error);
+      }
+      
+      // Now ask user to choose - with ignoreFocusOut to prevent accidental dismissal
+      const decision = await vscode.window.showQuickPick(
+        [
+          {
+            label: '$(arrow-left) Keep Current Version',
+            value: 'keep',
+            description: 'Keep the current version and discard the conflict file'
+          },
+          {
+            label: '$(arrow-right) Use Conflict Version',
+            value: 'use',
+            description: 'Replace current version with the conflict file'
+          },
+          {
+            label: '$(git-merge) Merge Both Versions',
+            value: 'merge',
+            description: 'Intelligently combine unique pages from both versions'
+          },
+          {
+            label: '$(close) Cancel',
+            value: 'cancel',
+            description: 'Skip this conflict for now'
+          }
+        ],
+        {
+          placeHolder: `Resolve SyncThing Conflict: ${fileName}`,
+          ignoreFocusOut: true // Prevent dismissal by clicking outside
+        }
+      );
+
+      if (!decision || decision.value === 'cancel') {
+        console.log('[WebviewProvider] User cancelled conflict resolution');
+        continue;
+      }
+
+      try {
+        if (decision.value === 'merge') {
+          // Load both versions and merge
+          const currentData = await this.storageService.loadNotes();
+          const conflictBuffer = await vscode.workspace.fs.readFile(conflictUri);
+          const conflictData = JSON.parse(Buffer.from(conflictBuffer).toString('utf8'));
+          
+          if (currentData && conflictData) {
+            const merged = await this.storageService.mergeNotes(currentData, conflictData);
+            await this.storageService.saveNotes(merged, true);
+            
+            // Delete conflict file and backup it
+            await this.storageService.resolveSyncThingConflict(conflictFile, false);
+            
+            vscode.window.showInformationMessage(
+              `✓ Merged versions successfully (${merged.pages.length} total pages)`
+            );
+          }
+        } else {
+          await this.storageService.resolveSyncThingConflict(
+            conflictFile,
+            decision.value === 'use'
+          );
+          
+          vscode.window.showInformationMessage(
+            decision.value === 'use'
+              ? '✓ Using conflict version'
+              : '✓ Keeping current version'
+          );
+        }
+      } catch (error) {
+        console.error('[WebviewProvider] Error resolving conflict:', error);
+        vscode.window.showErrorMessage(
+          `Failed to resolve conflict: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      }
+    }
+
+    vscode.window.showInformationMessage('✓ All SyncThing conflicts resolved');
+    
+    // Reload notes
+    await this.handleLoadNotes();
   }
 
   /**

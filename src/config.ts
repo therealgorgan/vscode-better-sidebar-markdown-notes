@@ -14,6 +14,9 @@ export interface BackupConfig {
 
 export interface SyncConfig {
   conflictResolution: 'timestamp' | 'manual';
+  enableFileWatcher: boolean;
+  autoReloadOnExternalChange: boolean;
+  checkSyncThingConflicts: boolean;
 }
 
 class Config {
@@ -45,7 +48,10 @@ class Config {
 
   get sync(): SyncConfig {
     return {
-      conflictResolution: this.config.get('sync.conflictResolution', 'manual')
+      conflictResolution: this.config.get('sync.conflictResolution', 'manual'),
+      enableFileWatcher: this.config.get('sync.enableFileWatcher', true),
+      autoReloadOnExternalChange: this.config.get('sync.autoReloadOnExternalChange', false),
+      checkSyncThingConflicts: this.config.get('sync.checkSyncThingConflicts', true)
     };
   }
 }

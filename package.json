@@ -2,7 +2,7 @@
 	"name": "better-sidebar-markdown-notes",
 	"displayName": "Better Sidebar Markdown Notes",
 	"description": "Enhanced markdown notes in your sidebar with improved features and cloud sync",
-	"version": "1.6.0",
+	"version": "1.6.1",
 	"publisher": "therealgorgan",
 	"author": {
 		"email": "therealgorgan@example.com",
@@ -200,21 +200,21 @@
 						"default": 1000,
 						"minimum": 100,
 						"maximum": 10000,
-						"description": "Auto-save interval in milliseconds (100-10000ms)"
+						"description": "Auto-save interval in milliseconds (100-10000ms). Consider increasing to 3000-5000ms when using cloud sync like SyncThing to reduce conflicts."
 					},
-					"workspace-sidebar-notes.backup.enabled": {
+					"better-sidebar-markdown-notes.backup.enabled": {
 						"type": "boolean",
 						"default": true,
 						"description": "Enable automatic backup creation before saving changes"
 					},
-					"workspace-sidebar-notes.backup.maxBackups": {
+					"better-sidebar-markdown-notes.backup.maxBackups": {
 						"type": "number",
 						"default": 10,
 						"minimum": 1,
 						"maximum": 100,
 						"description": "Maximum number of backup files to keep (1-100)"
 					},
-					"workspace-sidebar-notes.sync.conflictResolution": {
+					"better-sidebar-markdown-notes.sync.conflictResolution": {
 						"type": "string",
 						"enum": [
 							"timestamp",
@@ -222,6 +222,21 @@
 						],
 						"default": "manual",
 						"description": "How to resolve conflicts when notes are modified on multiple devices. 'timestamp' uses the newest version, 'manual' asks the user"
+					},
+					"better-sidebar-markdown-notes.sync.enableFileWatcher": {
+						"type": "boolean",
+						"default": true,
+						"description": "Watch for external changes to notes file (e.g., from cloud sync services like SyncThing). Recommended to keep enabled."
+					},
+					"better-sidebar-markdown-notes.sync.autoReloadOnExternalChange": {
+						"type": "boolean",
+						"default": false,
+						"description": "Automatically reload notes when external changes are detected. If false, you'll be prompted first."
+					},
+					"better-sidebar-markdown-notes.sync.checkSyncThingConflicts": {
+						"type": "boolean",
+						"default": true,
+						"description": "Check for and help resolve SyncThing conflict files (.sync-conflict-*). Recommended to keep enabled if using SyncThing."
 					}
 				}
 			}

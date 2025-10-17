@@ -68,7 +68,20 @@ The Sidebar Markdown Notes extension now supports automatic file-based persisten
 ### Sync Settings
 ```json
 {
-  "sidebar-markdown-notes.sync.conflictResolution": "manual" // or "timestamp"
+  "sidebar-markdown-notes.sync.conflictResolution": "manual", // or "timestamp"
+  "sidebar-markdown-notes.sync.enableFileWatcher": true, // Watch for external changes
+  "sidebar-markdown-notes.sync.autoReloadOnExternalChange": false, // Prompt before reloading
+  "sidebar-markdown-notes.sync.checkSyncThingConflicts": true // Check for .sync-conflict files
+}
+```
+
+**Recommended Settings for SyncThing Users:**
+```json
+{
+  "sidebar-markdown-notes.storage.autoSaveInterval": 3000, // Increase to 3-5 seconds to reduce conflicts
+  "sidebar-markdown-notes.sync.conflictResolution": "manual", // Control conflict resolution
+  "sidebar-markdown-notes.sync.enableFileWatcher": true,
+  "sidebar-markdown-notes.sync.checkSyncThingConflicts": true
 }
 ```
 
@@ -117,6 +130,35 @@ your-project/
 1. Place project in iCloud Drive folder
 2. Ensure "Desktop and Documents" sync is enabled (macOS)
 3. Wait for initial sync to complete
+
+### SyncThing
+**Recommended for cross-platform sync without cloud services**
+
+1. **Setup SyncThing on all devices**
+   - Install SyncThing on each device
+   - Configure folder sync for your workspace directories
+   
+2. **Configure the extension for SyncThing**
+   ```json
+   {
+     "better-sidebar-markdown-notes.storage.autoSaveInterval": 3000,
+     "better-sidebar-markdown-notes.sync.conflictResolution": "manual",
+     "better-sidebar-markdown-notes.sync.enableFileWatcher": true,
+     "better-sidebar-markdown-notes.sync.checkSyncThingConflicts": true
+   }
+   ```
+
+3. **Best practices**
+   - Increase auto-save interval to 3-5 seconds to reduce conflicts
+   - Close VS Code on one machine before opening on another when possible
+   - The extension will detect and help resolve `.sync-conflict` files
+   - File watcher automatically detects external changes
+   
+4. **Handling conflicts**
+   - The extension automatically detects SyncThing conflict files
+   - You'll be prompted to choose which version to keep
+   - All conflict resolutions are backed up automatically
+   - Use "Restore from Backup" if you make a mistake
 
 ## Troubleshooting
 

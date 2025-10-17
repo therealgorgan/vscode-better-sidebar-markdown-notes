@@ -15,6 +15,7 @@ export interface NotesData {
     totalPages: number;
     createdAt: string;
     syncStatus?: 'synced' | 'pending' | 'conflict';
+    fileModTime?: number; // File modification timestamp for conflict detection
   };
 }
 
@@ -29,6 +30,8 @@ export class StorageService {
   private readonly notesFilename = 'sidebar-notes.json';
   private readonly backupFolder = 'sidebar-notes-backups';
   private deviceId: string;
+  private lastKnownModTime: number = 0;
+  private fileWatcher?: vscode.FileSystemWatcher;
 
   constructor(private context: vscode.ExtensionContext) {
     // Generate or retrieve a unique device ID for conflict resolution
@@ -68,6 +71,13 @@ export class StorageService {
    */
   private getNotesFilePath(): string {
     return path.join(this.getStoragePath(), this.notesFilename);
+  }
+
+  /**
+   * Get the full path to the notes file (public accessor)
+   */
+  getNotesFilePathPublic(): string {
+    return this.getNotesFilePath();
   }
 
   /**
@@ -176,6 +186,7 @@ export class StorageService {
 
     try {
       const data = await fs.promises.readFile(notesPath, 'utf8');
+      const stat = await fs.promises.stat(notesPath);
       const parsed = JSON.parse(data);
 
       // If file looks like legacy v1 format (no version or version === 1), attempt migration
@@ -208,6 +219,12 @@ export class StorageService {
         throw new Error('Invalid notes data format');
       }
 
+      // Store file modification time for conflict detection
+      this.lastKnownModTime = stat.mtimeMs;
+      if (!notesData.metadata.fileModTime) {
+        notesData.metadata.fileModTime = stat.mtimeMs;
+      }
+
       // Migration: Initialize bookmarks array if it doesn't exist
       // This ensures backward compatibility with notes created before bookmark feature
       if (!notesData.bookmarks || notesData.bookmarks.length !== notesData.pages.length) {
@@ -230,13 +247,49 @@ export class StorageService {
   /**
    * Save notes to file
    */
-  async saveNotes(notesData: NotesData): Promise<void> {
+  async saveNotes(notesData: NotesData, skipConflictCheck: boolean = false): Promise<void> {
     await this.ensureStorageDirectory();
+
+    const notesPath = this.getNotesFilePath();
+
+    // Check for conflicts before saving (unless explicitly skipped)
+    if (!skipConflictCheck && this.lastKnownModTime > 0) {
+      try {
+        const stat = await fs.promises.stat(notesPath);
+        
+        // If file was modified externally since we last read it
+        if (stat.mtimeMs > this.lastKnownModTime) {
+          // File has been modified externally - potential conflict
+          const config = getConfig();
+          
+          if (config.sync.conflictResolution === 'timestamp') {
+            // Auto-resolve: Load the external version and compare timestamps
+            const externalData = await this.loadNotes();
+            
+            if (externalData) {
+              const externalTime = new Date(externalData.lastModified).getTime();
+              const localTime = new Date(notesData.lastModified).getTime();
+              
+              // If external version is newer, don't overwrite
+              if (externalTime > localTime) {
+                throw new Error('CONFLICT_EXTERNAL_NEWER');
+              }
+            }
+          } else {
+            // Manual resolution required
+            throw new Error('CONFLICT_DETECTED');
+          }
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          // Re-throw if it's not a "file doesn't exist" error
+          throw error;
+        }
+      }
+    }
 
     // Create backup before saving
     await this.createBackup();
-
-    const notesPath = this.getNotesFilePath();
 
     // Update metadata
     notesData.lastModified = new Date().toISOString();
@@ -245,6 +298,11 @@ export class StorageService {
 
     const jsonData = JSON.stringify(notesData, null, 2);
     await fs.promises.writeFile(notesPath, jsonData, 'utf8');
+    
+    // Update our last known modification time
+    const stat = await fs.promises.stat(notesPath);
+    this.lastKnownModTime = stat.mtimeMs;
+    notesData.metadata.fileModTime = stat.mtimeMs;
   }
 
   /**
@@ -417,5 +475,185 @@ export class StorageService {
     }
 
     return { hasConflict: false };
+  }
+
+  /**
+   * Setup file system watcher to detect external changes
+   */
+  setupFileWatcher(onExternalChange: () => void): void {
+    const notesPath = this.getNotesFilePath();
+    
+    // Dispose existing watcher if any
+    if (this.fileWatcher) {
+      this.fileWatcher.dispose();
+    }
+
+    // Create a new file watcher
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(
+      notesPath,
+      false, // Don't ignore create events
+      false, // Don't ignore change events
+      false  // Don't ignore delete events
+    );
+
+    // Watch for changes
+    this.fileWatcher.onDidChange(async (uri) => {
+      try {
+        const stat = await fs.promises.stat(uri.fsPath);
+        
+        // Only trigger if this is truly an external change
+        if (stat.mtimeMs > this.lastKnownModTime) {
+          console.log('[StorageService] External file change detected');
+          this.lastKnownModTime = stat.mtimeMs;
+          onExternalChange();
+        }
+      } catch (error) {
+        console.warn('[StorageService] Error handling file change:', error);
+      }
+    });
+
+    this.fileWatcher.onDidCreate(async () => {
+      console.log('[StorageService] Notes file created externally');
+      onExternalChange();
+    });
+
+    this.fileWatcher.onDidDelete(() => {
+      console.log('[StorageService] Notes file deleted externally');
+      onExternalChange();
+    });
+  }
+
+  /**
+   * Dispose file watcher
+   */
+  disposeFileWatcher(): void {
+    if (this.fileWatcher) {
+      this.fileWatcher.dispose();
+      this.fileWatcher = undefined;
+    }
+  }
+
+  /**
+   * Check for and handle SyncThing conflict files
+   */
+  async checkForSyncThingConflicts(): Promise<string[]> {
+    const storagePath = this.getStoragePath();
+    const conflictFiles: string[] = [];
+
+    try {
+      const files = await fs.promises.readdir(storagePath);
+      console.log(`[StorageService] Checking for conflicts in: ${storagePath}`);
+      console.log(`[StorageService] Found ${files.length} files in directory`);
+      
+      for (const file of files) {
+        // SyncThing creates conflict files with pattern: filename.sync-conflict-YYYYMMDD-HHMMSS-XXXXXXX.ext
+        if (file.includes('sync-conflict') && file.includes('sidebar-notes')) {
+          const fullPath = path.join(storagePath, file);
+          conflictFiles.push(fullPath);
+          console.log(`[StorageService] Found conflict file: ${file}`);
+        }
+      }
+      
+      if (conflictFiles.length === 0) {
+        console.log('[StorageService] No SyncThing conflict files found');
+      }
+    } catch (error) {
+      console.warn('[StorageService] Error checking for SyncThing conflicts:', error);
+    }
+
+    return conflictFiles;
+  }
+
+  /**
+   * Resolve a SyncThing conflict by choosing between files
+   */
+  async resolveSyncThingConflict(conflictFilePath: string, useConflictVersion: boolean): Promise<void> {
+    const notesPath = this.getNotesFilePath();
+
+    if (useConflictVersion) {
+      // Backup the current file
+      await this.createBackup();
+      
+      // Replace with conflict file
+      await fs.promises.copyFile(conflictFilePath, notesPath);
+      
+      // Delete the conflict file
+      await fs.promises.unlink(conflictFilePath);
+    } else {
+      // Keep current version, just delete the conflict file
+      // But first, backup the conflict file just in case
+      await this.ensureBackupDirectory();
+      const backupFileName = `conflict-backup-${path.basename(conflictFilePath)}`;
+      const backupPath = path.join(this.getBackupDirectoryPath(), backupFileName);
+      await fs.promises.copyFile(conflictFilePath, backupPath);
+      
+      // Delete the conflict file
+      await fs.promises.unlink(conflictFilePath);
+    }
+
+    // Reload the file to update our state
+    await this.loadNotes();
+  }
+
+  /**
+   * Attempt to merge two versions of notes
+   */
+  async mergeNotes(localData: NotesData, remoteData: NotesData): Promise<NotesData> {
+    // Simple merge strategy: combine unique pages
+    const localPages = new Set(localData.pages);
+    const remotePages = new Set(remoteData.pages);
+    const allPages = Array.from(new Set([...localData.pages, ...remoteData.pages]));
+
+    // Use the more recent metadata
+    const localTime = new Date(localData.lastModified).getTime();
+    const remoteTime = new Date(remoteData.lastModified).getTime();
+    const newerData = localTime > remoteTime ? localData : remoteData;
+
+    // Create merged data
+    const mergedData: NotesData = {
+      version: Math.max(localData.version, remoteData.version),
+      lastModified: new Date().toISOString(),
+      deviceId: this.deviceId,
+      state: newerData.state,
+      currentPage: Math.min(newerData.currentPage, allPages.length - 1),
+      pages: allPages,
+      bookmarks: new Array(allPages.length).fill(false),
+      metadata: {
+        totalPages: allPages.length,
+        createdAt: localData.metadata.createdAt || remoteData.metadata.createdAt,
+        syncStatus: 'synced'
+      }
+    };
+
+    // Try to preserve bookmarks where pages match
+    const pageIndexMap = new Map(allPages.map((page, idx) => [page, idx]));
+    
+    // Merge bookmarks from both versions
+    if (localData.bookmarks) {
+      localData.pages.forEach((page, idx) => {
+        const newIdx = pageIndexMap.get(page);
+        if (newIdx !== undefined && localData.bookmarks![idx]) {
+          mergedData.bookmarks![newIdx] = true;
+        }
+      });
+    }
+    
+    if (remoteData.bookmarks) {
+      remoteData.pages.forEach((page, idx) => {
+        const newIdx = pageIndexMap.get(page);
+        if (newIdx !== undefined && remoteData.bookmarks![idx]) {
+          mergedData.bookmarks![newIdx] = true;
+        }
+      });
+    }
+
+    return mergedData;
+  }
+
+  /**
+   * Get the device ID for this instance
+   */
+  getDeviceId(): string {
+    return this.deviceId;
   }
 }
