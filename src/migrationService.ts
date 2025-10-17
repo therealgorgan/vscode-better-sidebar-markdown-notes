@@ -42,9 +42,6 @@ export class MigrationService {
    * Create a default notes structure
    */
   private createDefaultNotes(): NotesData {
-    const welcomeMessage =
-      '# Welcome to `Better Sidebar Markdown Notes`\n\nStart by typing **markdown**.\n\nClick the `Toggle preview` button to view your notes\n\nAlso works with GitHub Flavored Markdown ✨✨\n- [ ] Start by  \n- [ ] creating your own  \n- [x] checklists!  \n\nOr any kind of markdown\n\n- Your imagination  \n- Is the limit\n\n---\n\n✨ **Enhanced features**:\n- Cloud sync support\n- Improved backup system\n- Better conflict resolution';
-
     const now = new Date().toISOString();
 
     return {
@@ -53,7 +50,7 @@ export class MigrationService {
       deviceId: '', // Will be set by storage service
       state: 'editor',
       currentPage: 0,
-      pages: [welcomeMessage],
+      pages: [''], // Start with one empty page instead of welcome message
       metadata: {
         totalPages: 1,
         createdAt: now,
@@ -101,8 +98,16 @@ export class MigrationService {
         notesToMigrate = this.createDefaultNotes();
       }
 
+      // Suppress file watcher events during initial save
+      this.storageService.setSuppressFileWatcher(true);
+      
       // Save the migrated data
       await this.storageService.saveNotes(notesToMigrate);
+      
+      // Re-enable file watcher after a short delay
+      setTimeout(() => {
+        this.storageService.setSuppressFileWatcher(false);
+      }, 500);
 
       // Mark migration as completed
       this.markMigrationCompleted();

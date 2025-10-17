@@ -32,6 +32,7 @@ export class StorageService {
   private deviceId: string;
   private lastKnownModTime: number = 0;
   private fileWatcher?: vscode.FileSystemWatcher;
+  private suppressFileWatcherEvents: boolean = false;
 
   constructor(private context: vscode.ExtensionContext) {
     // Generate or retrieve a unique device ID for conflict resolution
@@ -498,6 +499,11 @@ export class StorageService {
 
     // Watch for changes
     this.fileWatcher.onDidChange(async (uri) => {
+      if (this.suppressFileWatcherEvents) {
+        console.log('[StorageService] File change event suppressed (internal operation)');
+        return;
+      }
+      
       try {
         const stat = await fs.promises.stat(uri.fsPath);
         
@@ -513,11 +519,21 @@ export class StorageService {
     });
 
     this.fileWatcher.onDidCreate(async () => {
+      if (this.suppressFileWatcherEvents) {
+        console.log('[StorageService] File create event suppressed (internal operation)');
+        return;
+      }
+      
       console.log('[StorageService] Notes file created externally');
       onExternalChange();
     });
 
     this.fileWatcher.onDidDelete(() => {
+      if (this.suppressFileWatcherEvents) {
+        console.log('[StorageService] File delete event suppressed (internal operation)');
+        return;
+      }
+      
       console.log('[StorageService] Notes file deleted externally');
       onExternalChange();
     });
@@ -655,5 +671,17 @@ export class StorageService {
    */
   getDeviceId(): string {
     return this.deviceId;
+  }
+
+  /**
+   * Temporarily suppress file watcher events (for internal operations)
+   */
+  setSuppressFileWatcher(suppress: boolean): void {
+    this.suppressFileWatcherEvents = suppress;
+    if (suppress) {
+      console.log('[StorageService] File watcher events suppressed');
+    } else {
+      console.log('[StorageService] File watcher events re-enabled');
+    }
   }
 }
