@@ -494,7 +494,7 @@ export class StorageService {
       notesPath,
       false, // Don't ignore create events
       false, // Don't ignore change events
-      false  // Don't ignore delete events
+      false // Don't ignore delete events
     );
 
     // Watch for changes
@@ -616,8 +616,6 @@ export class StorageService {
    */
   async mergeNotes(localData: NotesData, remoteData: NotesData): Promise<NotesData> {
     // Simple merge strategy: combine unique pages
-    const localPages = new Set(localData.pages);
-    const remotePages = new Set(remoteData.pages);
     const allPages = Array.from(new Set([...localData.pages, ...remoteData.pages]));
 
     // Use the more recent metadata
