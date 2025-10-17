@@ -953,6 +953,10 @@ body {
 }
 
 /* Confirmation modal specific styles */
+#confirm-modal {
+  z-index: 2500; /* Higher than Browse Notes modal (2000) but lower than toast (3000) */
+}
+
 .confirm-modal-content {
   max-width: 420px;
 }
