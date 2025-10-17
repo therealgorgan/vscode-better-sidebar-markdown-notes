@@ -1,0 +1,265 @@
+{
+	"name": "better-sidebar-markdown-notes",
+	"displayName": "Better Sidebar Markdown Notes",
+	"description": "Enhanced markdown notes in your sidebar with improved features and cloud sync",
+	"version": "1.3.2",
+	"publisher": "therealgorgan",
+	"author": {
+		"email": "therealgorgan@example.com",
+		"name": "therealgorgan",
+		"url": "https://github.com/therealgorgan"
+	},
+	"license": "GPL-3.0-or-later",
+	"icon": "images/icon.png",
+	"repository": {
+		"url": "https://www.github.com/therealgorgan/better-sidebar-markdown-notes",
+		"type": "git"
+	},
+	"keywords": [
+		"markdown",
+		"notes",
+		"view",
+		"sidebar",
+		"enhanced",
+		"better",
+		"github",
+		"flavored",
+		"todo",
+		"checklist"
+	],
+	"engines": {
+		"vscode": "^1.50.0"
+	},
+	"extensionKind": [
+		"ui",
+		"workspace"
+	],
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onCommand:better-sidebar-markdown-notes.resetData",
+		"onCommand:better-sidebar-markdown-notes.previousPage",
+		"onCommand:better-sidebar-markdown-notes.nextPage",
+		"onCommand:better-sidebar-markdown-notes.togglePreview",
+		"onCommand:better-sidebar-markdown-notes.createBackup",
+		"onCommand:better-sidebar-markdown-notes.restoreFromBackup",
+		"onCommand:better-sidebar-markdown-notes.openStorageFolder",
+		"onCommand:better-sidebar-markdown-notes.resetMigration",
+		"onCommand:better-sidebar-markdown-notes.openSettings",
+		"onCommand:better-sidebar-markdown-notes.importNotes",
+		"onView:betterSidebarMarkdownNotes.webview"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "betterSidebarMarkdownNotes",
+					"title": "Markdown Notes",
+					"icon": "$(notebook)"
+				}
+			]
+		},
+		"views": {
+			"betterSidebarMarkdownNotes": [
+				{
+					"type": "webview",
+					"id": "betterSidebarMarkdownNotes.webview",
+					"name": "Notes",
+					"when": "true"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "better-sidebar-markdown-notes.resetData",
+				"category": "Sidebar markdown notes",
+				"title": "Reset data"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.previousPage",
+				"category": "Sidebar markdown notes",
+				"title": "Previous page",
+				"icon": "$(arrow-left)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.nextPage",
+				"category": "Sidebar markdown notes",
+				"title": "Next page",
+				"icon": "$(arrow-right)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.togglePreview",
+				"category": "Sidebar markdown notes",
+				"title": "Toggle preview",
+				"icon": "$(open-preview)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.exportPage",
+				"category": "Sidebar markdown notes",
+				"title": "Export page",
+				"icon": "$(symbol-reference)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.createBackup",
+				"category": "Sidebar markdown notes",
+				"title": "Create Backup",
+				"icon": "$(save)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.restoreFromBackup",
+				"category": "Sidebar markdown notes",
+				"title": "Restore from Backup",
+				"icon": "$(history)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.openStorageFolder",
+				"category": "Sidebar markdown notes",
+				"title": "Open Storage Folder",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.resetMigration",
+				"category": "Sidebar markdown notes",
+				"title": "Reset Migration (Debug)",
+				"icon": "$(debug-restart)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.openSettings",
+				"category": "Sidebar markdown notes",
+				"title": "Open Settings",
+				"icon": "$(settings-gear)"
+			},
+			{
+				"command": "better-sidebar-markdown-notes.importNotes",
+				"category": "Sidebar markdown notes",
+				"title": "Import Notes",
+				"icon": "$(cloud-download)"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "better-sidebar-markdown-notes.previousPage",
+					"group": "navigation@0",
+					"when": "view == betterSidebarMarkdownNotes.webview"
+				},
+				{
+					"command": "better-sidebar-markdown-notes.nextPage",
+					"group": "navigation@1",
+					"when": "view == betterSidebarMarkdownNotes.webview"
+				},
+				{
+					"command": "better-sidebar-markdown-notes.togglePreview",
+					"group": "navigation@2",
+					"when": "view == betterSidebarMarkdownNotes.webview"
+				},
+				{
+					"command": "better-sidebar-markdown-notes.exportPage",
+					"group": "navigation@3",
+					"when": "view == betterSidebarMarkdownNotes.webview"
+				},
+				{
+					"command": "better-sidebar-markdown-notes.importNotes",
+					"group": "navigation@4",
+					"when": "view == betterSidebarMarkdownNotes.webview"
+				}
+			]
+		},
+		"configuration": [
+			{
+				"title": "Sidebar markdown notes",
+				"properties": {
+					"better-sidebar-markdown-notes.leftMargin": {
+						"type": "boolean",
+						"default": false,
+						"description": "Whether or not a left margin should be added to the main view. To align it with other elements"
+					},
+					"better-sidebar-markdown-notes.storage.location": {
+						"type": "string",
+						"enum": [
+							"workspace",
+							"custom"
+						],
+						"default": "workspace",
+						"description": "Where to store notes files. 'workspace' stores in .vscode folder for cloud sync, 'custom' allows you to specify a path"
+					},
+					"better-sidebar-markdown-notes.storage.customPath": {
+						"type": "string",
+						"default": "",
+						"description": "Custom path for storing notes when storage.location is set to 'custom'. Leave empty to use workspace .vscode folder"
+					},
+					"better-sidebar-markdown-notes.storage.autoSave": {
+						"type": "boolean",
+						"default": true,
+						"description": "Automatically save notes to file as you type"
+					},
+					"better-sidebar-markdown-notes.storage.autoSaveInterval": {
+						"type": "number",
+						"default": 1000,
+						"minimum": 100,
+						"maximum": 10000,
+						"description": "Auto-save interval in milliseconds (100-10000ms)"
+					},
+					"workspace-sidebar-notes.backup.enabled": {
+						"type": "boolean",
+						"default": true,
+						"description": "Enable automatic backup creation before saving changes"
+					},
+					"workspace-sidebar-notes.backup.maxBackups": {
+						"type": "number",
+						"default": 10,
+						"minimum": 1,
+						"maximum": 100,
+						"description": "Maximum number of backup files to keep (1-100)"
+					},
+					"workspace-sidebar-notes.sync.conflictResolution": {
+						"type": "string",
+						"enum": [
+							"timestamp",
+							"manual"
+						],
+						"default": "manual",
+						"description": "How to resolve conflicts when notes are modified on multiple devices. 'timestamp' uses the newest version, 'manual' asks the user"
+					}
+				}
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider\" webpack --mode production",
+		"webpack": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider\" webpack --mode development",
+		"webpack-dev": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider\" webpack --mode development --watch",
+		"compile": "tsc -p ./",
+		"lint": "eslint src --ext ts",
+		"watch": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider\" webpack --mode development --watch",
+		"deploy": "vsce publish --yarn",
+		"package": "vsce package",
+		"build:prod": "cross-env NODE_OPTIONS=\"--openssl-legacy-provider\" webpack --mode production"
+	},
+	"devDependencies": {
+		"@types/marked": "^1.1.0",
+		"@types/node": "^12.11.7",
+		"@types/vscode": "^1.50.0",
+		"@typescript-eslint/eslint-plugin": "^4.1.1",
+		"@typescript-eslint/parser": "^4.1.1",
+		"cross-env": "^10.0.0",
+		"eslint": "^7.9.0",
+		"eslint-config-airbnb-base": "^14.2.0",
+		"eslint-config-prettier": "^6.15.0",
+		"eslint-plugin-import": "^2.22.1",
+		"eslint-plugin-prettier": "^3.1.4",
+		"prettier": "^2.1.2",
+		"ts-loader": "^8.0.11",
+		"typescript": "^4.0.2",
+		"vsce": "^1.81.1",
+		"webpack": "^5.4.0",
+		"webpack-cli": "^4.2.0"
+	},
+	"dependencies": {
+		"dompurify": "^2.2.0",
+		"lodash": "^4.17.20",
+		"marked": "^1.2.2"
+	}
+}

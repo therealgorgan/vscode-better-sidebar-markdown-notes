@@ -1,0 +1,15 @@
+.DS_Store
+npm-debug.log
+Thumbs.db
+node_modules/
+out/
+.vs/
+dist/
+.vscode/
+
+# Build artifacts
+*.vsix
+
+# Personal/debug scripts
+extract-*.js
+monitor-*.js

@@ -1,0 +1,16 @@
+.vscode/**
+src/**
+.gitignore
+.yarnrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+**/*.map
+**/*.ts
+node_modules
+.eslintignore
+.eslintrc.js
+.prettierrc.js
+out
+webpack.config.js
+.github
