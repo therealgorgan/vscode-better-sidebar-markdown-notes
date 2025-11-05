@@ -1,6 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { getConfig } from './config';
 import { StorageService, NotesData, LegacyNotesData } from './storageService';
@@ -266,16 +268,34 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
     try {
       // Check if no workspace is open
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
+      // If no workspace is open, check if user configured a custom storage path
+      const config = getConfig();
       if (!workspaceFolder) {
-        // Show no workspace message in webview instead of popup
-        if (this._view) {
-          this._view.webview.postMessage({ type: 'noWorkspace' });
+        if (config.storage.location === 'custom' && config.storage.customPath) {
+          // Reinitialize storage/migration/import services to respect new custom path
+          this.config = config;
+          this.storageService = new StorageService(this.context);
+          this.migrationService = new MigrationService(this.context, this.storageService);
+          this.importService = new ImportService(this.context, this.storageService);
+
+          // Setup file watcher if enabled
+          if (this.config.sync.enableFileWatcher) {
+            this.storageService.setupFileWatcher(() => this.handleExternalFileChange());
+          }
+
+          // Continue to migration/loading below using the custom path
+        } else {
+          // No workspace and no custom path set - tell webview to show the prompt
+          if (this._view) {
+            this._view.webview.postMessage({ type: 'noWorkspace' });
+          }
+          return;
         }
-        return;
       }
 
       // Check for SyncThing conflicts first
-      const config = getConfig();
+      // Config already retrieved earlier; use it
       if (config.sync.checkSyncThingConflicts) {
         const conflictFiles = await this.storageService.checkForSyncThingConflicts();
         if (conflictFiles.length > 0) {
@@ -293,7 +313,7 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
       }
 
       // Check for migration and load data
-      const notesData = await this.migrationService.checkAndMigrate();
+  const notesData = await this.migrationService.checkAndMigrate();
 
       if (this._view) {
         this._view.webview.postMessage({
@@ -1067,6 +1087,9 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
+    // Add cache-busting timestamp to force webview to reload scripts/styles during development
+    const cacheBuster = Date.now();
+    
     const purifyUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'lib', 'purify.min.js'));
 
     const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'lib', 'marked.min.js'));
@@ -1074,13 +1097,13 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
     const lodashUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'lib', 'lodash.min.js'));
 
     // Get the local path to main script run in the webview, then convert it to a uri we can use in the webview.
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js'));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js')) + `?v=${cacheBuster}`;
 
     // Do the same for the stylesheet.
     const styleResetUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'reset.css'));
     const markdownCss = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'markdown.css'));
     const styleVSCodeUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'vscode.css'));
-    const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
+    const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css')) + `?v=${cacheBuster}`;
 
     // Use a nonce to only allow a specific script to be run.
     const nonce = this._getNonce();
@@ -1402,12 +1425,45 @@ export default class SidebarMarkdownNotesProvider implements vscode.WebviewViewP
     });
 
     if (result && result[0]) {
-      const customPath = result[0].fsPath;
+      let customPath = result[0].fsPath;
+
+      // If user selected a project root, prefer its .vscode folder if it exists
+      try {
+        const possibleVscode = path.join(customPath, '.vscode');
+        const notesFileInVscode = path.join(possibleVscode, 'sidebar-notes.json');
+
+        // If .vscode exists or contains an existing notes file, ask user whether to use it
+        const hasNotesFile = fs.existsSync(notesFileInVscode);
+        const hasVscodeFolder = fs.existsSync(possibleVscode);
+
+        if (hasNotesFile || hasVscodeFolder) {
+          const choice = await vscode.window.showWarningMessage(
+            hasNotesFile
+              ? `A .vscode folder with existing notes was detected at:\n${possibleVscode}\nUse this .vscode folder for storing notes?`
+              : `A .vscode folder was detected at:\n${possibleVscode}\nUse this .vscode folder to store notes?`,
+            { modal: true },
+            'Use .vscode',
+            'Use selected folder',
+            'Cancel'
+          );
+
+          if (choice === 'Use .vscode') {
+            customPath = possibleVscode;
+          } else if (choice === 'Use selected folder') {
+            // keep the selected folder
+          } else {
+            // Cancel - do nothing
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[WebviewProvider] Error checking for .vscode folder:', err);
+      }
 
       // Update configuration to use custom location
       const config = vscode.workspace.getConfiguration('better-sidebar-markdown-notes');
-      await config.update('storage.location', 'custom', vscode.ConfigurationTarget.Global);
-      await config.update('storage.customPath', customPath, vscode.ConfigurationTarget.Global);
+  await config.update('storage.location', 'custom', vscode.ConfigurationTarget.Global);
+  await config.update('storage.customPath', customPath, vscode.ConfigurationTarget.Global);
 
       // Show success message
       vscode.window.showInformationMessage(`Notes will now be stored in: ${customPath}`, 'OK');

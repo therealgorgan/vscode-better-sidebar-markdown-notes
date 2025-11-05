@@ -228,8 +228,8 @@
       clearTimeout(autoSaveTimeout);
     }
 
-    // Show auto-save pending status
-    updateSaveStatus('saving', 'Auto-saving...');
+  // Do not write 'Auto-saving...' into the top toolbar to avoid layout shift.
+  // Auto-save success will show a bottom toast; keep top status reserved for manual saves/errors.
 
     autoSaveTimeout = setTimeout(() => {
       saveToFile(state, true); // true indicates auto-save
@@ -249,9 +249,8 @@
       saveButton.disabled = true;
     }
 
-    if (!isAutoSave) {
-      updateSaveStatus('saving', 'Saving...');
-    }
+    // Do not show top 'Saving...' status (use bottom toast for both auto and manual saves).
+    // Keep the save button disabled while pending; errors will still use the top save status.
 
     const fileData = convertToFileFormat(state);
 
@@ -483,11 +482,24 @@
       case 'saveSuccess': {
         // Handle successful save
         const isAutoSave = message.isAutoSave;
-        if (isAutoSave) {
-          updateSaveStatus('saved', 'Auto-saved');
-        } else {
-          updateSaveStatus('saved', 'Saved successfully');
-        }
+        // For both auto and manual saves show a bottom toast and avoid keeping top status message
+        setTimeout(() => {
+          try {
+            if (typeof showToast === 'function') {
+              showToast(isAutoSave ? 'Auto-saved' : 'Saved successfully', null, null, 2000);
+            }
+          } catch (err) {
+            console.warn('[SaveSuccess] Toast failed:', err);
+          }
+        }, 0);
+
+        // Clear any top save status to avoid duplicate messages
+        try {
+          if (saveStatus) {
+            saveStatus.textContent = '';
+            saveStatus.className = 'save-status';
+          }
+        } catch (err) {}
         break;
       }
       case 'saveError': {
@@ -742,11 +754,17 @@
         });
       }
 
+      // Ensure the note item has a dataset index for drag/drop and other handlers
+      noteItem.dataset.index = index;
       notesList.appendChild(noteItem);
     });
 
     // Update selection UI
     updateBrowserSelectionUI();
+    // Attach drag handlers if drag/drop support initialized
+    if (window.__attachBrowserDragHandlers) {
+      window.__attachBrowserDragHandlers();
+    }
   };
 
   /**
@@ -1494,8 +1512,10 @@
     // Wire bookmark filter in browse notes modal
     const bookmarkFilter = document.getElementById('bookmark-filter-select');
     if (bookmarkFilter) {
+      // When the filter changes, update the browser list
       bookmarkFilter.addEventListener('change', () => {
-        renderNotesList();
+        // updateNoteBrowser rebuilds the visible list and respects the filter
+        updateNoteBrowser();
       });
     }
 
@@ -1515,6 +1535,474 @@
     if (browserDeselectAllBtn) {
       browserDeselectAllBtn.addEventListener('click', browserDeselectAll);
     }
+
+    // Enable drag & drop reordering in the notes browser
+    // Uses HTML5 drag/drop on the .note-item elements
+    const enableBrowserDragDrop = () => {
+      const notesList = document.getElementById('notes-list');
+      if (!notesList) return;
+
+      let dragSrcEl = null;
+
+      const handleDragStart = function (e) {
+        // element being dragged
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed = 'move';
+        try {
+          e.dataTransfer.setData('text/plain', this.dataset.index);
+        } catch (err) {
+          // Some environments require try/catch
+        }
+        this.classList.add('dragging');
+        // record source index and create placeholder when drag starts
+        dragSrcIndex = Number(this.dataset.index);
+        try {
+          placeholderEl = createPlaceholder(this.offsetHeight || 48);
+        } catch (err) {
+          placeholderEl = createPlaceholder(48);
+        }
+      };
+
+      const handleDragOver = function (e) {
+        if (e.preventDefault) {
+          e.preventDefault(); // Allows drop
+        }
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+      };
+
+      // Auto-scroll support when dragging near top/bottom
+      let autoScrollInterval = null;
+      let autoScrollDir = 0; // -1 up, 1 down, 0 none
+
+      // Placeholder and drag source index (scoped to drag/drop handlers)
+      let placeholderEl = null;
+      let dragSrcIndex = -1;
+
+      const createPlaceholder = (height) => {
+        const el = document.createElement('div');
+        el.className = 'note-placeholder';
+        // Keep inline styles minimal so CSS (and theme variables) determine appearance
+        el.style.height = (height ? height + 'px' : '40px');
+        el.style.margin = '6px 0';
+        // allow dropping directly onto the placeholder
+        el.addEventListener('dragover', function (e) {
+          if (e.preventDefault) e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          return false;
+        }, false);
+
+        el.addEventListener('drop', function (e) {
+          if (e.stopPropagation) e.stopPropagation();
+          if (e.preventDefault) e.preventDefault();
+          // delegate to the generic drop handler logic by simulating a drop
+          // onto the notes list; the performPlaceholderMove helper below will
+          // handle the reposition using the placeholder's DOM position.
+          try {
+            performPlaceholderMove();
+          } catch (err) {
+            console.error('[DragPlaceholder] drop-on-placeholder failed', err);
+          }
+          return false;
+        }, false);
+
+        return el;
+      };
+
+      // Helper to move an item using the current placeholder position (if any)
+      const performPlaceholderMove = () => {
+        const notesList = document.getElementById('notes-list');
+        if (!placeholderEl || !notesList) return false;
+
+        // Compute destIndex as number of note-items before the placeholder
+        let destIndex = 0;
+        for (const child of notesList.children) {
+          if (child === placeholderEl) break;
+          if (child.classList && child.classList.contains('note-item')) destIndex++;
+        }
+
+        const srcIndex = dragSrcIndex >= 0 ? dragSrcIndex : (dragSrcEl ? Number(dragSrcEl.dataset.index) : -1);
+        if (srcIndex < 0 || Number.isNaN(destIndex)) return false;
+
+        let insertIndex = destIndex;
+        if (srcIndex < destIndex) insertIndex = destIndex - 1;
+
+        insertIndex = Math.max(0, Math.min(currentState.pages.length - (srcIndex < insertIndex ? 1 : 0), insertIndex));
+
+        const page = currentState.pages.splice(srcIndex, 1)[0];
+        currentState.pages.splice(insertIndex, 0, page);
+        if (currentState.bookmarks) {
+          const bm = currentState.bookmarks.splice(srcIndex, 1)[0];
+          currentState.bookmarks.splice(insertIndex, 0, bm);
+        }
+
+        const newSelection = new Set();
+        browserSelectedNotes.forEach((i) => {
+          if (i === srcIndex) {
+            newSelection.add(insertIndex);
+          } else if (srcIndex < insertIndex && i > srcIndex && i <= insertIndex) {
+            newSelection.add(i - 1);
+          } else if (srcIndex > insertIndex && i >= insertIndex && i < srcIndex) {
+            newSelection.add(i + 1);
+          } else {
+            newSelection.add(i);
+          }
+        });
+        browserSelectedNotes = newSelection;
+
+        if (currentState.currentPage === srcIndex) {
+          currentState.currentPage = insertIndex;
+        } else if (srcIndex < insertIndex && currentState.currentPage > srcIndex && currentState.currentPage <= insertIndex) {
+          currentState.currentPage -= 1;
+        } else if (srcIndex > insertIndex && currentState.currentPage >= insertIndex && currentState.currentPage < srcIndex) {
+          currentState.currentPage += 1;
+        }
+
+        renderView();
+        updateNoteBrowser();
+        saveToFile(currentState, false);
+        console.debug('[DragPlaceholder] moved', { srcIndex, destIndex, insertIndex });
+        updateStatusForSeconds('Notes reordered', 1500);
+
+        // cleanup placeholder
+        try { placeholderEl.classList.remove('highlight'); } catch (err) {}
+        if (placeholderEl.parentElement) {
+          try { placeholderEl.parentElement.removeChild(placeholderEl); } catch (err) {}
+        }
+        placeholderEl = null;
+        stopAutoScroll();
+        return true;
+      };
+
+      const startAutoScroll = () => {
+        if (autoScrollInterval) return;
+        autoScrollInterval = setInterval(() => {
+          try {
+            if (!notesList) return;
+            if (autoScrollDir === -1) {
+              notesList.scrollTop = Math.max(0, notesList.scrollTop - 12);
+            } else if (autoScrollDir === 1) {
+              notesList.scrollTop = Math.min(notesList.scrollHeight, notesList.scrollTop + 12);
+            }
+          } catch (err) {
+            console.warn('[DragAutoScroll] error', err);
+          }
+        }, 35);
+      };
+
+      const stopAutoScroll = () => {
+        if (autoScrollInterval) {
+          clearInterval(autoScrollInterval);
+          autoScrollInterval = null;
+        }
+        autoScrollDir = 0;
+      };
+
+      const handleDragEnter = function () {
+        this.classList.add('over');
+      };
+
+      const handleDragLeave = function (e) {
+        this.classList.remove('over');
+        // If leaving the list area, stop auto-scroll
+        // e.clientY may be undefined for some events, guard
+        if (!e || !notesList) {
+          stopAutoScroll();
+          return;
+        }
+        const rect = notesList.getBoundingClientRect();
+        if (e.clientY < rect.top || e.clientY > rect.bottom) {
+          stopAutoScroll();
+          // remove placeholder if leaving the list
+          if (placeholderEl && placeholderEl.parentElement) {
+            placeholderEl.parentElement.removeChild(placeholderEl);
+          }
+          placeholderEl = null;
+          dragSrcIndex = -1;
+        }
+      };
+
+      const handleDrop = function (e) {
+        if (e.stopPropagation) {
+          e.stopPropagation(); // stops the browser from redirecting.
+        }
+        // Local flag to indicate we handled the drop via the placeholder branch
+        let placeholderHandled = false;
+
+          // If we have a placeholder in the list, use its DOM position to determine destination index
+          const notesList = document.getElementById('notes-list');
+          if (placeholderEl && notesList && placeholderEl.parentElement === notesList) {
+            // Compute destIndex as the number of note-items before the placeholder in the DOM
+            let destIndex = 0;
+            for (const child of notesList.children) {
+              if (child === placeholderEl) break;
+              if (child.classList && child.classList.contains('note-item')) destIndex++;
+            }
+
+            const srcIndex = dragSrcIndex >= 0 ? dragSrcIndex : Number(dragSrcEl.dataset.index);
+
+            if (!Number.isNaN(srcIndex) && !Number.isNaN(destIndex)) {
+              // Adjust destIndex because removing the source shifts indices when source is before dest
+              let insertIndex = destIndex;
+              if (srcIndex < destIndex) insertIndex = destIndex - 1;
+
+              // Move the page in currentState.pages and bookmarks
+              const page = currentState.pages.splice(srcIndex, 1)[0];
+              currentState.pages.splice(insertIndex, 0, page);
+
+              if (currentState.bookmarks) {
+                const bm = currentState.bookmarks.splice(srcIndex, 1)[0];
+                currentState.bookmarks.splice(insertIndex, 0, bm);
+              }
+
+              // Update selection set to reflect moved indices
+              const newSelection = new Set();
+              browserSelectedNotes.forEach((i) => {
+                if (i === srcIndex) {
+                  newSelection.add(insertIndex);
+                } else if (srcIndex < insertIndex && i > srcIndex && i <= insertIndex) {
+                  newSelection.add(i - 1);
+                } else if (srcIndex > insertIndex && i >= insertIndex && i < srcIndex) {
+                  newSelection.add(i + 1);
+                } else {
+                  newSelection.add(i);
+                }
+              });
+              browserSelectedNotes = newSelection;
+
+              // Ensure currentPage index is preserved if it was moved
+              if (currentState.currentPage === srcIndex) {
+                currentState.currentPage = insertIndex;
+              } else if (srcIndex < insertIndex && currentState.currentPage > srcIndex && currentState.currentPage <= insertIndex) {
+                currentState.currentPage -= 1;
+              } else if (srcIndex > insertIndex && currentState.currentPage >= insertIndex && currentState.currentPage < srcIndex) {
+                currentState.currentPage += 1;
+              }
+
+              // Re-render and persist
+              renderView();
+              updateNoteBrowser();
+              saveToFile(currentState, false);
+              updateStatusForSeconds('Notes reordered', 1500);
+              // Mark that we've handled the drop using the placeholder so the
+              // later generic drop handling does not run and double-move the item.
+              placeholderHandled = true;
+            }
+          }
+
+          // Clean up placeholder if present
+          if (placeholderEl) {
+            try { placeholderEl.classList.remove('highlight'); } catch (err) {}
+            if (placeholderEl.parentElement) {
+              try { placeholderEl.parentElement.removeChild(placeholderEl); } catch (err) {}
+            }
+            console.debug('[DragPlaceholder] removed on drop');
+          }
+          placeholderEl = null;
+
+        // stop any auto-scroll activity
+        stopAutoScroll();
+
+        // If the placeholder branch handled the move, skip the generic drop handler
+        if (placeholderHandled) {
+          return false;
+        }
+
+        // Don't do anything if dropping the same element
+        if (dragSrcEl !== this) {
+          const srcIndex = Number(dragSrcEl.dataset.index);
+          // Compute destIndex as the index of `this` in the list (number of note-items before it)
+          let destIndex = 0;
+          const notesList = document.getElementById('notes-list');
+          for (const child of notesList.children) {
+            if (child === this) break;
+            if (child.classList && child.classList.contains('note-item')) destIndex++;
+          }
+
+          if (!Number.isNaN(srcIndex) && !Number.isNaN(destIndex)) {
+            // Adjust dest index for removal if source is before destination
+            let insertIndex = destIndex;
+            if (srcIndex < destIndex) insertIndex = destIndex - 1;
+
+            // Move the page in currentState.pages and bookmarks
+            const page = currentState.pages.splice(srcIndex, 1)[0];
+            currentState.pages.splice(insertIndex, 0, page);
+
+            if (currentState.bookmarks) {
+              const bm = currentState.bookmarks.splice(srcIndex, 1)[0];
+              currentState.bookmarks.splice(insertIndex, 0, bm);
+            }
+
+            // Update selection set to reflect moved indices
+            const newSelection = new Set();
+            browserSelectedNotes.forEach((i) => {
+              if (i === srcIndex) {
+                newSelection.add(insertIndex);
+              } else if (srcIndex < insertIndex && i > srcIndex && i <= insertIndex) {
+                newSelection.add(i - 1);
+              } else if (srcIndex > insertIndex && i >= insertIndex && i < srcIndex) {
+                newSelection.add(i + 1);
+              } else {
+                newSelection.add(i);
+              }
+            });
+            browserSelectedNotes = newSelection;
+
+            // Ensure currentPage index is preserved if it was moved
+            if (currentState.currentPage === srcIndex) {
+              currentState.currentPage = insertIndex;
+            } else if (srcIndex < insertIndex && currentState.currentPage > srcIndex && currentState.currentPage <= insertIndex) {
+              currentState.currentPage -= 1;
+            } else if (srcIndex > insertIndex && currentState.currentPage >= insertIndex && currentState.currentPage < srcIndex) {
+              currentState.currentPage += 1;
+            }
+
+            // Re-render and persist
+            renderView();
+            updateNoteBrowser();
+            saveToFile(currentState, false);
+              console.debug('[DragPlaceholder] moved', { srcIndex, destIndex, insertIndex });
+              updateStatusForSeconds('Notes reordered', 1500);
+          }
+            // We've handled the move using the placeholder position; return early to avoid
+            // falling-through to the standard drop-handler which also attempts to move
+            // based on `this` and would cause a second move.
+            return false;
+          }
+
+        return false;
+      };
+
+      const handleDragEnd = function () {
+        this.classList.remove('dragging');
+        // remove visual states
+        document.querySelectorAll('#notes-list .note-item').forEach((item) => {
+          item.classList.remove('over');
+        });
+        // stop auto-scrolling when drag ends
+        stopAutoScroll();
+        // remove placeholder and reset drag index
+        if (placeholderEl) {
+          try { placeholderEl.classList.remove('highlight'); } catch (err) {}
+          if (placeholderEl.parentElement) {
+            try { placeholderEl.parentElement.removeChild(placeholderEl); } catch (err) {}
+          }
+          console.debug('[DragPlaceholder] removed on dragend');
+        }
+        placeholderEl = null;
+        dragSrcIndex = -1;
+      };
+
+      // Attach handlers to list items (call whenever list is rebuilt)
+      const attachDragHandlers = () => {
+        const notesListEl = document.getElementById('notes-list');
+
+        // Ensure container can accept drops in whitespace
+        if (notesListEl) {
+          notesListEl.addEventListener('dragover', (e) => {
+            if (e.preventDefault) e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+          }, false);
+
+          notesListEl.addEventListener('drop', (e) => {
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.preventDefault) e.preventDefault();
+            // If a placeholder is active, perform the move via it
+            if (typeof performPlaceholderMove === 'function') {
+              performPlaceholderMove();
+            }
+            return false;
+          }, false);
+        }
+
+        document.querySelectorAll('#notes-list .note-item').forEach((item) => {
+          item.setAttribute('draggable', 'true');
+          item.dataset.index = item.querySelector('.note-content') ? item.querySelector('.note-content').dataset.index : item.dataset.index;
+          item.addEventListener('dragstart', handleDragStart, false);
+          item.addEventListener('dragenter', handleDragEnter, false);
+          // Enhanced dragover: detect pointer position and start/stop auto-scroll
+          item.addEventListener('dragover', function (e) {
+            if (e.preventDefault) e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            if (!notesList) return false;
+            const rect = notesList.getBoundingClientRect();
+            const y = e.clientY;
+            const threshold = Math.min(80, rect.height * 0.18); // dynamic threshold
+
+            if (y <= rect.top + threshold) {
+              autoScrollDir = -1;
+              startAutoScroll();
+            } else if (y >= rect.bottom - threshold) {
+              autoScrollDir = 1;
+              startAutoScroll();
+            } else {
+              // pointer in the middle, stop scrolling
+              autoScrollDir = 0;
+              stopAutoScroll();
+            }
+
+            // Insert placeholder before/after this item depending on pointer
+            try {
+              const itemRect = this.getBoundingClientRect();
+              const midpoint = itemRect.top + itemRect.height / 2;
+
+              // Lazily create placeholder sized to item
+              if (!placeholderEl) {
+                placeholderEl = createPlaceholder(itemRect.height);
+                // If item is very short, use thin insertion-line variant for better visibility
+                if (itemRect.height <= 28) {
+                  placeholderEl.classList.add('insertion-line');
+                }
+                console.debug('[DragPlaceholder] created placeholder element');
+              }
+
+              // If pointer is above midpoint, insert before this item; else insert after
+              if (e.clientY < midpoint) {
+                if (this.previousElementSibling !== placeholderEl) {
+                  // remove existing placeholder from old position
+                  if (placeholderEl.parentElement) {
+                    placeholderEl.parentElement.removeChild(placeholderEl);
+                  }
+                  // insert before current item
+                  this.parentElement.insertBefore(placeholderEl, this);
+                  placeholderEl.classList.add('highlight');
+                  console.debug('[DragPlaceholder] inserted before index', this.dataset.index, placeholderEl);
+                }
+              } else {
+                if (this.nextElementSibling !== placeholderEl) {
+                  // remove existing placeholder from old position
+                  if (placeholderEl.parentElement) {
+                    placeholderEl.parentElement.removeChild(placeholderEl);
+                  }
+                  // insert after current item
+                  this.parentElement.insertBefore(placeholderEl, this.nextElementSibling);
+                  placeholderEl.classList.add('highlight');
+                  console.debug('[DragPlaceholder] inserted after index', this.dataset.index, placeholderEl);
+                }
+              }
+
+            } catch (err) {
+              console.error('[DragPlaceholder] Error during insertion:', err);
+            }
+
+            // call generic handler for compatibility
+            return handleDragOver.call(this, e);
+          }, false);
+
+          item.addEventListener('dragleave', handleDragLeave, false);
+          item.addEventListener('drop', handleDrop, false);
+          item.addEventListener('dragend', handleDragEnd, false);
+        });
+      };
+
+      // Expose for other functions to call after rebuilding list
+      window.__attachBrowserDragHandlers = attachDragHandlers;
+    };
+
+    // Initialize drag/drop support
+    enableBrowserDragDrop();
 
     // Wire delete selected notes button (footer only)
     const deleteSelectedFooterBtn = document.getElementById('delete-selected-notes-footer');

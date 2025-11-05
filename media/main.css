@@ -172,6 +172,80 @@ body {
   color: var(--vscode-notificationsErrorIcon-foreground);
 }
 
+/* Toast notifications (bottom footer overlay) */
+.toast-container {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 12px; /* slightly above bottom toolbar */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* allow clicks to pass through except on the toast itself */
+  z-index: 2000;
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  margin: 6px 0;
+  min-width: 120px;
+  max-width: 540px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  opacity: 0.98;
+}
+
+.toast .toast-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.toast .primary-button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* Placeholder shown while dragging to indicate insertion point */
+.note-placeholder {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 18px; /* thinner by default */
+  height: auto;
+  border-radius: 4px;
+  margin: 6px 0;
+  transition: background-color 120ms ease-in-out, border-color 120ms ease-in-out, transform 80ms ease-in-out;
+  z-index: 9999; /* ensure visible above list items */
+  /* Default visible style using theme-aware variables (higher contrast) */
+  border: 2px dashed rgba(255,255,255,0.12);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));
+}
+
+/* Stronger highlight when placeholder is actively showing insertion point */
+.note-placeholder.highlight {
+  background: rgba(85, 170, 255, 0.14);
+  border-color: rgba(85,170,255,1);
+  box-shadow: 0 4px 12px rgba(85,170,255,0.12);
+  transform: translateY(-1px) scale(1.01);
+}
+
+/* Thin insertion line variant for low-contrast themes */
+.note-placeholder.insertion-line {
+  min-height: 6px;
+  height: 6px;
+  background: linear-gradient(90deg, transparent 0%, rgba(85,170,255,0.95) 50%, transparent 100%);
+  border: none;
+  margin: 8px 0;
+}
+
 /* Utility classes */
 .hidden {
   display: none !important;

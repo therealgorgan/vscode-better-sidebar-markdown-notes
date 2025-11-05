@@ -1,5 +1,32 @@
 # Changelog - Version 1.6.1
 
+## Changelog - Version 1.7.0 (2025-11-05)
+
+### Summary
+- Improved note browsing UX: fixed bookmark filter and added drag & drop re-ordering with a visible placeholder and auto-scroll support.
+- Improved save UX: auto-saves now show a bottom toast and top toolbar save status is cleared to avoid layout shifts.
+- Developer/bugfix: fixed placeholder drop behavior (including drops into whitespace and top-of-list), made placeholder insertion robust, and added cache-busting for webview assets during development.
+- Misc: improved handling for custom storage locations when no workspace is open and bumped package to 1.7.0.
+
+### Notable changes
+- Fix: Browse modal bookmark filter now correctly filters Bookmarked/All notes.
+- Feature: Drag & drop note re-ordering in the Browse Notes modal.
+  - Visible placeholder element with stronger styling for all themes.
+  - Auto-scroll when dragging near list edges.
+  - Corrected index math so dragged notes land at the expected position (handles top, middle and end placements).
+- UX: Auto-save uses a non-blocking bottom toast ('Auto-saved') instead of writing 'Auto-saving...' into the top toolbar (manual saves still show clear feedback via toast).
+- Fix: Dropping directly onto placeholder space (including the top-most placeholder) is now supported and deterministic.
+- Dev: Appends cache-busting query params to `main.js` and `main.css` URIs so the webview loads fresh assets during development.
+- Other: Version bumped to 1.7.0 and new VSIX packaged.
+
+### Files changed
+- `media/main.js` — bookmark filter fix, drag & drop implementation, placeholder + auto-scroll, save UI changes, placeholder drop handling.
+- `media/main.css` — styles for `.note-placeholder` and toast UI.
+- `src/webviewProvider.ts` — cache-busting of webview URIs and custom path handling fixes.
+- `package.json` — version bumped to 1.7.0.
+
+---
+
 ## 🎉 Major SyncThing Integration Improvements
 
 ### New Features
